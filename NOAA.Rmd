@@ -1,0 +1,209 @@
+---
+title: "How Severe Weather Impacts us"
+output:
+  html_document:
+    df_print: paged
+    theme: spacelab
+    highlight: pygments
+    number_sections: yes
+  html_notebook: default
+  pdf_document: 
+    highlight: pygments
+    number_sections: yes
+---
+*Coursera - Reproducible Research - Project 2*
+
+# Synopsis 
+This analysis is for the Coursera Reproducible Research course Week 4 Project 2, part of the Data Science Specialization. The project is to explore the impact of severe weather events on human heatlth (injuries and 
+fatalities) and finanical damage (property and crop damage)
+
+# Data Processing
+
+```{r, message=FALSE}
+library(tidyverse)
+library(grid)
+library(gridExtra)
+library(pander)
+```
+
+```{r Preprocessing, message=FALSE,cache=TRUE}
+NOAA <- read_csv("repdata-data-StormData.csv")
+
+names(NOAA)
+
+stormData <- NOAA[,c("EVTYPE", "FATALITIES", "INJURIES", "PROPDMG",
+                     "PROPDMGEXP","CROPDMG","CROPDMGEXP")]
+
+```
+
+## Data Processing for Health Analysis
+
+```{r Health Analysis}
+Health <- stormData %>% group_by(EVTYPE) %>% summarise(Injury = sum(INJURIES), Fatality =sum(FATALITIES))
+
+HealthInjury <- Health [order (Health$Injury, decreasing = T), -3]
+
+HealthFatality <- Health [order (Health$Fatality, decreasing = T), -2]
+```
+
+## Data Processing for Economic Damage Analysis
+
+
+
+```{r , message=FALSE,warning=FALSE}
+# check PROPDMGEXP class
+
+class(stormData$PROPDMGEXP)
+
+```
+
+```{r}
+# convert to factor
+
+stormData$PROPDMGEXP <- as.factor(stormData$PROPDMGEXP)
+
+stormData$CROPDMGEXP <- as.factor(stormData$CROPDMGEXP)
+
+# subset stormData
+
+ED <- stormData[,-c(2,3)]
+
+# check PROPDMGEXP levels
+
+levels(ED$PROPDMGEXP)
+```
+
+
+```{r}
+table(factor(ED$PROPDMGEXP))
+
+sum(is.na(ED$PROPDMGEXP))
+
+```
+
+```{r , message=FALSE}
+ED$Prop.DMG[ED$PROPDMGEXP %in% c("-","?","+")] <- 0
+
+ED$Prop.DMG[ED$PROPDMGEXP %in% c("h","H")] <- 100
+
+ED$Prop.DMG[ED$PROPDMGEXP == "0"] <- 1
+
+ED$Prop.DMG[ED$PROPDMGEXP == ""] <- 0
+
+ED$Prop.DMG[ED$PROPDMGEXP == "1"] <- 10
+
+ED$Prop.DMG[ED$PROPDMGEXP == "2"] <- 100
+
+ED$Prop.DMG[ED$PROPDMGEXP == "3"] <- 1000
+
+ED$Prop.DMG[ED$PROPDMGEXP == "4"] <- 1*10^4
+
+ED$Prop.DMG[ED$PROPDMGEXP == "5"] <- 1*10^5
+
+ED$Prop.DMG[ED$PROPDMGEXP == "6"] <- 1*10^6
+
+ED$Prop.DMG[ED$PROPDMGEXP == "7"] <- 1* 10^7
+
+ED$Prop.DMG[ED$PROPDMGEXP == "8"] <- 1* 10^8
+
+ED$Prop.DMG[ED$PROPDMGEXP == "K"] <- 1000
+
+ED$Prop.DMG[ED$PROPDMGEXP == "B"] <- 1*10^9
+
+ED$Prop.DMG[ED$PROPDMGEXP %in% c("m","M")] <- 1*10^6
+
+sum(is.na(ED$Prop.DMG))
+
+Property <- ED[, c(1,2,6)]     
+
+```
+
+
+```{r , message=FALSE}
+
+levels(ED$CROPDMGEXP)
+
+table(factor(ED$CROPDMGEXP))
+
+ED$Crop.DMG[ED$CROPDMGEXP == "?"] <- 0
+
+ED$Crop.DMG[ED$CROPDMGEXP == ""] <- 0
+
+ED$Crop.DMG[ED$CROPDMGEXP == "0"] <- 0
+
+ED$Crop.DMG[ED$CROPDMGEXP == "2"] <- 100
+
+ED$Crop.DMG[ED$CROPDMGEXP == "B"] <- 1*10^9
+
+ED$Crop.DMG[ED$CROPDMGEXP %in% c("k","K")] <- 1000
+
+ED$Crop.DMG[ED$CROPDMGEXP %in% c("m","M")] <- 1*10^6
+
+Crop <- ED[,c(1,4,7)]
+
+```
+
+
+# Results
+
+## Health Impact
+
+Top 6 weather events cause injuries.
+```{r Health Injury}
+
+pander(head(HealthInjury,6))
+```
+
+Top 6 weather events cause fatalities.
+```{r Health Fatality}
+
+pander(head(HealthFatality,6))
+```
+
+
+## Economic Damage
+
+```{r}
+Property$DMG.Value <- Property$PROPDMG*Property$Prop.DMG
+
+Crop$DMG.Value <- Crop$CROPDMG*Crop$Crop.DMG
+
+PropertyDMD <- Property %>% group_by(EVTYPE) %>% 
+    summarise(Damage = sum(DMG.Value)) %>% 
+    arrange(desc(Damage))
+
+PropertyDMDTop5 <- PropertyDMD [c(1:5),]
+
+PropertyDMDTop5$Damage <- PropertyDMDTop5$Damage/10^9
+
+names(PropertyDMDTop5) <- c("Events","Billions")
+
+CropDMD <- Crop %>% group_by(EVTYPE) %>% 
+    summarise(Damage = sum(DMG.Value)) %>% 
+    arrange(desc(Damage))
+
+CropDMDTop5 <- CropDMD[c(1:5),]
+
+CropDMDTop5$Damage <- CropDMDTop5$Damage/10^9
+
+names(CropDMDTop5) <- c("Events","Billions")
+
+pander(PropertyDMDTop5)
+
+pander(CropDMDTop5)
+
+```
+
+Top 5 weather events on Economic Impact
+
+```{r , fig.width=9 }
+g1 <- ggplot(PropertyDMDTop5,aes(x=Events, y = Billions)) + geom_col()+
+    labs(title = "Property Damage (Top 5)")
+
+g2 <- ggplot(CropDMDTop5,aes(x=Events, y = Billions)) + geom_col()+
+    labs(title = " Crop Damage (Top 5)")
+
+grid.arrange(g1,g2,nrow = 2)
+
+```
+
